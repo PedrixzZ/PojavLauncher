@@ -28,6 +28,9 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     private int mInputDeviceIdentifier;
     private boolean mDeviceSupportsRelativeAxis;
 
+    // Added to track landscape orientation
+    private boolean isLandscape = false;
+
     public AndroidPointerCapture(AbstractTouchpad touchpad, View hostView, float scaleFactor) {
         this.mScaleFactor = scaleFactor;
         this.mTouchpad = touchpad;
@@ -37,9 +40,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     }
 
     private void enableTouchpadIfNecessary() {
-        if (!mTouchpad.getDisplayState()) {
-            mTouchpad.enable(true);
-        }
+        if (!mTouchpad.getDisplayState()) mTouchpad.enable(true);
     }
 
     public void handleAutomaticCapture() {
@@ -54,45 +55,46 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     public boolean onCapturedPointer(View view, MotionEvent event) {
         checkSameDevice(event.getDevice());
 
-        // Determine if it's a touchpad or a mouse
-        if ((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) != 0) {
-            // Se o dispositivo é um trackball, não precisamos de mapeamento de eixos
-
-            // Use as coordenadas absolutas se o dispositivo for um trackball
-            mVector[0] = event.getX();
-            mVector[1] = event.getY(); 
-
+        // Detect landscape orientation
+        if (view.getResources().getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            isLandscape = true;
         } else {
-            // Se é um touchpad, precisamos mapear os eixos
-            mPointerTracker.trackEvent(event);
+            isLandscape = false;
+        }
 
-            // Obtenha o InputDevice do evento
-            InputDevice inputDevice = event.getDevice();
+        // Yes, we actually not only receive relative mouse events here, but also absolute touchpad ones!
+        // Therefore, we need to know when it's a touchpad and when it's a mouse.
 
-            // Verifique se o dispositivo suporta os eixos relativos
+        if ((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) != 0) {
+            // If the source claims to be a relative device by belonging to the trackball class,
+            // use its coordinates directly.
             if (mDeviceSupportsRelativeAxis) {
-                // Obtenha o mapeamento de eixos do dispositivo
-                int[] axesMapping = inputDevice.getMotionRanges();
-
-                // Mapeie os eixos relativos de acordo com o dispositivo
-                for (int i = 0; i < axesMapping.length; i++) {
-                    if (axesMapping[i] == MotionEvent.AXIS_RELATIVE_X) {
-                        mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
-                    } else if (axesMapping[i] == MotionEvent.AXIS_RELATIVE_Y) {
-                        mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
-                    }
-                }
+                // If some OEM decides to do a funny and make an absolute touchpad report itself as
+                // a trackball, we will at least have semi-valid relative positions
+                mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+                mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
             } else {
-                // Caso o dispositivo não suporte eixos relativos, use as coordenadas absolutas
+                // Otherwise trust the OS, i guess??
                 mVector[0] = event.getX();
-                mVector[1] = event.getY(); 
+                mVector[1] = event.getY();
             }
+        } else {
+            // If it's not a trackball, it's likely a touchpad and needs tracking like a touchscreen.
+            mPointerTracker.trackEvent(event);
+            // The relative position will already be written down into the mVector variable.
+        }
+
+        // Correct axes in landscape mode
+        if (isLandscape) {
+            float temp = mVector[0];
+            mVector[0] = mVector[1];
+            mVector[1] = temp;
         }
 
         if (!CallbackBridge.isGrabbing()) {
             enableTouchpadIfNecessary();
-
-            // Handle scrolling gestures for multi-touch touchpads.
+            // Yes, if the user's touchpad is multi-touch we will also receive events for that.
+            // So, handle the scrolling gesture ourselves.
             mVector[0] *= mMousePrescale;
             mVector[1] *= mMousePrescale;
             if (event.getPointerCount() < 2) {
@@ -102,7 +104,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
                 mScroller.performScroll(mVector);
             }
         } else {
-            // Update mouse position for GLFW.
+            // Position is updated by many events, hence it is send regardless of the event value
             CallbackBridge.mouseX += (mVector[0] * mScaleFactor);
             CallbackBridge.mouseY += (mVector[1] * mScaleFactor);
             CallbackBridge.sendCursorPos(CallbackBridge.mouseX, CallbackBridge.mouseY);
@@ -146,9 +148,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
-        if (hasFocus && MainActivity.isAndroid8OrHigher()) {
-            mHostView.requestPointerCapture();
-        }
+        if (hasFocus && MainActivity.isAndroid8OrHigher()) mHostView.requestPointerCapture();
     }
 
     public void detach() {
