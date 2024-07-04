@@ -56,20 +56,37 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
 
         // Determine if it's a touchpad or a mouse
         if ((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) != 0) {
-            // If the source claims to be a relative device, use its coordinates directly.
-            if (mDeviceSupportsRelativeAxis) {
-                // For devices that report as trackballs but behave like touchpads,
-                // use relative coordinates as a fallback.
-                mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
-                mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
-            } else {
-                // Use absolute coordinates if the device is truly a trackball.
-                mVector[0] = event.getX();
-                mVector[1] = event.getY();
-            }
+            // Se o dispositivo é um trackball, não precisamos de mapeamento de eixos
+
+            // Use as coordenadas absolutas se o dispositivo for um trackball
+            mVector[0] = event.getX();
+            mVector[1] = event.getY(); 
+
         } else {
-            // If it's not a trackball, it's likely a touchpad, so track its events.
+            // Se é um touchpad, precisamos mapear os eixos
             mPointerTracker.trackEvent(event);
+
+            // Obtenha o InputDevice do evento
+            InputDevice inputDevice = event.getDevice();
+
+            // Verifique se o dispositivo suporta os eixos relativos
+            if (mDeviceSupportsRelativeAxis) {
+                // Obtenha o mapeamento de eixos do dispositivo
+                int[] axesMapping = inputDevice.getMotionRanges();
+
+                // Mapeie os eixos relativos de acordo com o dispositivo
+                for (int i = 0; i < axesMapping.length; i++) {
+                    if (axesMapping[i] == MotionEvent.AXIS_RELATIVE_X) {
+                        mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+                    } else if (axesMapping[i] == MotionEvent.AXIS_RELATIVE_Y) {
+                        mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+                    }
+                }
+            } else {
+                // Caso o dispositivo não suporte eixos relativos, use as coordenadas absolutas
+                mVector[0] = event.getX();
+                mVector[1] = event.getY(); 
+            }
         }
 
         if (!CallbackBridge.isGrabbing()) {
