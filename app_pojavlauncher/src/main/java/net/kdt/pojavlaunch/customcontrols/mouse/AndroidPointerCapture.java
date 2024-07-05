@@ -56,6 +56,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
             // Trackball or relative device
             if(mDeviceSupportsRelativeAxis) {
                 // Relative device with accurate axes
+                // Correctly assign X and Y values
                 mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
                 mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
             } else {
