@@ -23,7 +23,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     private final float mMousePrescale = Tools.dpToPx(1);
     private final PointerTracker mPointerTracker = new PointerTracker();
     private final Scroller mScroller = new Scroller(TOUCHPAD_SCROLL_THRESHOLD);
-    private final float[] mVector = mPointerTracker.getMotionVector();
+    private final float[] mVector = new float[2]; // Use separate vector for motion
 
     private int mInputDeviceIdentifier;
     private boolean mDeviceSupportsRelativeAxis;
@@ -37,11 +37,13 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     }
 
     private void enableTouchpadIfNecessary() {
-        if(!mTouchpad.getDisplayState()) mTouchpad.enable(true);
+        if (!mTouchpad.getDisplayState()) {
+            mTouchpad.enable(true);
+        }
     }
 
     public void handleAutomaticCapture() {
-        if(!mHostView.hasWindowFocus()) {
+        if (!mHostView.hasWindowFocus()) {
             mHostView.requestFocus();
         } else {
             mHostView.requestPointerCapture();
@@ -52,29 +54,32 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
     public boolean onCapturedPointer(View view, MotionEvent event) {
         checkSameDevice(event.getDevice());
 
-        if((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) != 0) {
+        if ((event.getSource() & InputDevice.SOURCE_CLASS_TRACKBALL) != 0) {
             // Trackball or relative device
-            if(mDeviceSupportsRelativeAxis) {
+            if (mDeviceSupportsRelativeAxis) {
                 // Relative device with accurate axes
                 // Correctly assign X and Y values
                 mVector[0] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
                 mVector[1] = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
             } else {
                 // Relative device without accurate axes
+                // Use the raw X and Y values directly, this is usually correct for trackballs
                 mVector[0] = event.getX();
                 mVector[1] = event.getY();
             }
         } else {
             // Touchpad or other non-trackball device
-            mPointerTracker.trackEvent(event);
+            // Get the raw X and Y values, this is usually correct for touchpads
+            mVector[0] = event.getX();
+            mVector[1] = event.getY();
         }
 
-        if(!CallbackBridge.isGrabbing()) {
+        if (!CallbackBridge.isGrabbing()) {
             enableTouchpadIfNecessary();
             // Handle scrolling and motion
             mVector[0] *= mMousePrescale;
             mVector[1] *= mMousePrescale;
-            if(event.getPointerCount() < 2) {
+            if (event.getPointerCount() < 2) {
                 mTouchpad.applyMotionVector(mVector);
                 mScroller.resetScrollOvershoot();
             } else {
@@ -110,7 +115,7 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
 
     private void checkSameDevice(InputDevice inputDevice) {
         int newIdentifier = inputDevice.getId();
-        if(mInputDeviceIdentifier != newIdentifier) {
+        if (mInputDeviceIdentifier != newIdentifier) {
             reinitializeDeviceSpecificProperties(inputDevice);
             mInputDeviceIdentifier = newIdentifier;
         }
@@ -125,7 +130,9 @@ public class AndroidPointerCapture implements ViewTreeObserver.OnWindowFocusChan
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
-        if(hasFocus && MainActivity.isAndroid8OrHigher()) mHostView.requestPointerCapture();
+        if (hasFocus && MainActivity.isAndroid8OrHigher()) {
+            mHostView.requestPointerCapture();
+        }
     }
 
     public void detach() {
